@@ -176,18 +176,11 @@ void master(char *ifname, int cycletime)
 /* add ns to timespec */
 void add_timespec(struct timespec *ts, int64 addtime)
 {
-   int64 sec, nsec;
+   int64 nsec;
 
-   nsec = addtime % 1000000000;
-   sec = (addtime - nsec) / 1000000000;
-   ts->tv_sec += sec;
-   ts->tv_nsec += nsec;
-   if (ts->tv_nsec > 1000000000)
-   {
-      nsec = ts->tv_nsec % 1000000000;
-      ts->tv_sec += (ts->tv_nsec - nsec) / 1000000000;
-      ts->tv_nsec = nsec;
-   }
+   nsec = ts->tv_nsec + addtime;
+   ts->tv_nsec = nsec % 1000000000;
+   ts->tv_sec += (nsec - ts->tv_nsec) / 1000000000;
 }
 
 /* PI calculation to get linux time synced to DC time */
