@@ -322,7 +322,7 @@ int main(int argc, char *argv[])
    }
    else
    {
-      printf("Usage: master_shift_test ifname cycletime\nifname = enp2s0 for example\ncyctime in us");
+      printf("Usage: master_shift_test ifname cycletime\nifname = enp2s0 for example\ncyctime in us\n");
    }
 
    printf("End program\n");
