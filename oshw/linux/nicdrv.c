@@ -43,6 +43,14 @@
 #include <string.h>
 #include <netpacket/packet.h>
 #include <pthread.h>
+#ifndef __USE_GNU
+#define __USE_GNU
+#define RESTORE_GNU
+#endif
+#include <poll.h>
+#ifdef RESTORE_GNU
+#undef __USE_GNU
+#endif
 
 #include "oshw.h"
 #include "osal.h"
@@ -56,6 +64,8 @@ enum
    ECT_RED_DOUBLE
 };
 
+struct pollfd pollRxFd, pollRxFdRed;
+const struct timespec timeout_ts = {0, 100*1000}; // Set timeout to 100 us
 
 /** Primary source MAC address used for EtherCAT.
  * This address is not the MAC address used from the NIC.
@@ -91,11 +101,11 @@ int ecx_setupnic(ecx_portt *port, const char *ifname, int secondary)
 {
    int i;
    int r, rval, ifindex;
-   struct timeval timeout;
    struct ifreq ifr;
    struct sockaddr_ll sll;
    int *psock;
    pthread_mutexattr_t mutexattr;
+   struct pollfd* pollRxFdPtr;
 
    rval = 0;
    if (secondary)
@@ -115,6 +125,7 @@ int ecx_setupnic(ecx_portt *port, const char *ifname, int secondary)
          port->redport->stack.rxbufstat   = &(port->redport->rxbufstat);
          port->redport->stack.rxsa        = &(port->redport->rxsa);
          ecx_clear_rxbufstat(&(port->redport->rxbufstat[0]));
+         pollRxFdPtr = &pollRxFdRed;
       }
       else
       {
@@ -141,14 +152,14 @@ int ecx_setupnic(ecx_portt *port, const char *ifname, int secondary)
       port->stack.rxsa        = &(port->rxsa);
       ecx_clear_rxbufstat(&(port->rxbufstat[0]));
       psock = &(port->sockhandle);
+      pollRxFdPtr = &pollRxFd;
    }
    /* we use RAW packet socket, with packet type ETH_P_ECAT */
    *psock = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ECAT));
 
-   timeout.tv_sec =  0;
-   timeout.tv_usec = 1;
-   r = setsockopt(*psock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-   r = setsockopt(*psock, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+   pollRxFdPtr->fd = *psock;
+   pollRxFdPtr->events = (POLLIN | POLLPRI | POLLRDNORM | POLLRDBAND | POLLERR);
+
    i = 1;
    r = setsockopt(*psock, SOL_SOCKET, SO_DONTROUTE, &i, sizeof(i));
    /* connect socket to NIC by name */
@@ -336,20 +347,28 @@ int ecx_outframe_red(ecx_portt *port, int idx)
  */
 static int ecx_recvpkt(ecx_portt *port, int stacknumber)
 {
-   int lp, bytesrx;
+   int lp, bytesrx = 0;
    ec_stackT *stack;
+   struct pollfd* pollFdPtr;
+   int ret = -1;
 
    if (!stacknumber)
    {
       stack = &(port->stack);
+      pollFdPtr = &pollRxFd;
    }
    else
    {
       stack = &(port->redport->stack);
+      pollFdPtr = &pollRxFdRed;
    }
-   lp = sizeof(port->tempinbuf);
-   bytesrx = recv(*stack->sock, (*stack->tempbuf), lp, 0);
-   port->tempinbufs = bytesrx;
+
+   ret = ppoll(pollFdPtr, 1, &timeout_ts, NULL);
+   if(ret > 0) {
+      lp = sizeof(port->tempinbuf);
+      bytesrx = recv(*stack->sock, (*stack->tempbuf), lp, MSG_DONTWAIT);
+      port->tempinbufs = bytesrx;
+   }
 
    return (bytesrx > 0);
 }
