@@ -738,6 +738,7 @@ int ecx_readstate(ecx_contextt *context)
    {
       allslavespresent = TRUE;
    }
+   *(context->slavecount) = wkc;
 
    rval = etohs(rval);
    bitwisestate = (rval & 0x0f);
@@ -894,7 +895,18 @@ uint16 ecx_statecheck(ecx_contextt *context, uint16 slave, uint16 reqstate, int 
       }
    }
    while ((state != reqstate) && (osal_timer_is_expired(&timer) == FALSE));
-   context->slavelist[slave].state = rval;
+
+   if (slave == 0)
+   {
+      for (slave = 1; slave <= *(context->slavecount); slave++)
+      {
+         context->slavelist[slave].state = state;
+      }
+   }
+   else
+   {
+      context->slavelist[slave].state = rval;
+   }
 
    return state;
 }
