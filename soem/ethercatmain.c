@@ -727,12 +727,21 @@ int ecx_readstate(ecx_contextt *context)
    uint16 slca[MAX_FPRD_MULTI];
    boolean noerrorflag, allslavessamestate;
    boolean allslavespresent = FALSE;
-   int wkc;
+   int wkc, cnt;
 
    /* Try to establish the state of all slaves sending only one broadcast datagram.
     * This way a number of datagrams equal to the number of slaves will be sent only if needed.*/
    rval = 0;
-   wkc = ecx_BRD(context->port, 0, ECT_REG_ALSTAT, sizeof(rval), &rval, EC_TIMEOUTRET);
+   cnt = 0;
+   wkc = EC_NOFRAME;
+   while (wkc <= EC_NOFRAME)
+   {
+      wkc = ecx_BRD(context->port, 0, ECT_REG_ALSTAT, sizeof(rval), &rval, EC_TIMEOUTRET);
+      if (wkc <= EC_NOFRAME && ++cnt >= 5)
+      {
+         return EC_NOFRAME;
+      }
+   }
 
    if(wkc >= *(context->slavecount))
    {
@@ -803,7 +812,16 @@ int ecx_readstate(ecx_contextt *context)
             slca[slave - fslave] = configadr;
             sl[slave - fslave] = zero;
          }
-         ecx_FPRD_multi(context, (lslave - fslave) + 1, &(slca[0]), &(sl[0]), EC_TIMEOUTRET3);
+         wkc = EC_NOFRAME;
+         cnt = 0;
+         while (wkc <= EC_NOFRAME)
+         {
+            wkc = ecx_FPRD_multi(context, (lslave - fslave) + 1, &(slca[0]), &(sl[0]), EC_TIMEOUTRET3);
+            if (wkc <= EC_NOFRAME && ++cnt >= 3)
+            {
+               return EC_NOFRAME;
+            }
+         }
          for (slave = fslave; slave <= lslave; slave++)
          {
             configadr = context->slavelist[slave].configadr;
