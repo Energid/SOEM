@@ -1033,6 +1033,7 @@ int ecx_mbxreceive(ecx_contextt *context, uint16 slave, ec_mbxbuft *mbx, int tim
    uint16 mbxro,mbxl,configadr;
    int wkc=0;
    int wkc2;
+   int repeat = 1;
    uint16 SMstat;
    uint8 SMcontr;
    ec_mbxheadert *mbxh;
@@ -1071,6 +1072,7 @@ int ecx_mbxreceive(ecx_contextt *context, uint16 slave, ec_mbxbuft *mbx, int tim
                MBXEp = (ec_mbxerrort *)mbx;
                ecx_mbxerror(context, slave, etohs(MBXEp->Detail));
                wkc = 0; /* prevent emergency to cascade up, it is already handled. */
+               repeat = 0;
             }
             else if ((wkc > 0) && ((mbxh->mbxtype & 0x0f) == ECT_MBXT_COE)) /* CoE response? */
             {
@@ -1080,6 +1082,7 @@ int ecx_mbxreceive(ecx_contextt *context, uint16 slave, ec_mbxbuft *mbx, int tim
                   ecx_mbxemergencyerror(context, slave, etohs(EMp->ErrorCode), EMp->ErrorReg,
                           EMp->bData, etohs(EMp->w1), etohs(EMp->w2));
                   wkc = 0; /* prevent emergency to cascade up, it is already handled. */
+                  repeat = 0;
                }
             }
             else if ((wkc > 0) && ((mbxh->mbxtype & 0x0f) == ECT_MBXT_EOE)) /* EoE response? */
@@ -1097,6 +1100,7 @@ int ecx_mbxreceive(ecx_contextt *context, uint16 slave, ec_mbxbuft *mbx, int tim
                      {
                         /* Fragment handled by EoE hook */
                         wkc = 0;
+                        repeat = 0;
                      }
                   }
                }
@@ -1105,14 +1109,17 @@ int ecx_mbxreceive(ecx_contextt *context, uint16 slave, ec_mbxbuft *mbx, int tim
             {
                if (wkc <= 0) /* read mailbox lost */
                {
-                  SMstat ^= 0x0200; /* toggle repeat request */
-                  SMstat = htoes(SMstat);
-                  wkc2 = ecx_FPWR(context->port, configadr, ECT_REG_SM1STAT, sizeof(SMstat), &SMstat, EC_TIMEOUTRET);
-                  SMstat = etohs(SMstat);
-                  do /* wait for toggle ack */
+                  if (repeat > 0)
                   {
-                     wkc2 = ecx_FPRD(context->port, configadr, ECT_REG_SM1CONTR, sizeof(SMcontr), &SMcontr, EC_TIMEOUTRET);
-                   } while (((wkc2 <= 0) || ((SMcontr & 0x02) != (HI_BYTE(SMstat) & 0x02))) && (osal_timer_is_expired(&timer) == FALSE));
+                     SMstat ^= 0x0200; /* toggle repeat request */
+                     SMstat = htoes(SMstat);
+                     wkc2 = ecx_FPWR(context->port, configadr, ECT_REG_SM1STAT, sizeof(SMstat), &SMstat, EC_TIMEOUTRET);
+                     SMstat = etohs(SMstat);
+                     do /* wait for toggle ack */
+                     {
+                        wkc2 = ecx_FPRD(context->port, configadr, ECT_REG_SM1CONTR, sizeof(SMcontr), &SMcontr, EC_TIMEOUTRET);
+                     } while (((wkc2 <= 0) || ((SMcontr & 0x02) != (HI_BYTE(SMstat) & 0x02))) && (osal_timer_is_expired(&timer) == FALSE));
+                  }
                   do /* wait for read mailbox available */
                   {
                      wkc2 = ecx_FPRD(context->port, configadr, ECT_REG_SM1STAT, sizeof(SMstat), &SMstat, EC_TIMEOUTRET);
